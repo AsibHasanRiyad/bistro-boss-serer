@@ -226,6 +226,7 @@ async function run() {
 
     app.post('/payments', async(req, res) =>{
       const payment = req.body;
+      payment.menuId = payment.menuId.map((id) => new ObjectId(id));
       const result = await paymentsCollection.insertOne(payment);
       console.log('payment info', payment);
       const query ={_id:{
@@ -233,6 +234,68 @@ async function run() {
       }}
       const deleteResult = await cartsCollection.deleteMany(query)
       res.send({result, deleteResult})
+    })
+
+    //dashboard
+    app.get('/admin-stats',verifyToken, verifyAdmin, async(req, res) =>{
+      const users = await userCollection.estimatedDocumentCount()
+      const products = await menuCollection.estimatedDocumentCount()
+      const orders = await paymentsCollection.estimatedDocumentCount()
+
+      //this is not a better way
+      // const payments = await paymentsCollection.find().toArray();
+      // const revenue = payments.reduce((total, payment) => total + payment.price,0)
+
+      //alternative
+      const result = await paymentsCollection.aggregate([
+        {
+          $group:{
+            _id:null,
+            totalRevenue:{
+              $sum:'$price'
+            }
+          }
+        }
+      ]).toArray()
+      const revenue = result.length > 0 ?result[0].totalRevenue : 0
+      res.send({users, products, orders, revenue})
+    })
+
+
+
+    app.get('/order-stats',verifyToken, verifyAdmin, async(req, res) =>{
+      const result = await paymentsCollection.aggregate([
+        {
+          $unwind:'$menuId'
+        },
+        {
+          $lookup:{
+            from:'menu',
+            localField:'menuId',
+            foreignField:'_id',
+            as:'menuItems'
+          }
+        },
+        {
+          $unwind:'$menuItems'
+        },
+        {
+          $group:{
+            _id: '$menuItems.category',
+            quantity:{$sum:1},
+            revenue:{$sum: "$menuItems.price"}
+          }
+        },
+        {
+          $project:{
+            _id:0,
+            category:'$_id',
+            quantity:'$quantity',
+            revenue:'$revenue'
+          }
+        }
+      ]).toArray()
+      res.send(result)
     })
 
     // Send a ping to confirm a successful connection
