@@ -39,44 +39,39 @@ async function run() {
     });
 
     //verify token by middleware
-    const verifyToken = (req, res, next) =>{
-      console.log('inside the verify token',req.headers.authorization);
+    const verifyToken = (req, res, next) => {
+      console.log("inside the verify token", req.headers.authorization);
       if (!req.headers.authorization) {
-        return res.status(401).send({message:'Unauthorized Access'})
+        return res.status(401).send({ message: "Unauthorized Access" });
       }
-      const token = req.headers.authorization.split(' ')[1]
-      jwt.verify(token, process.env.DB_SECRET, (error, decoded) =>{
+      const token = req.headers.authorization.split(" ")[1];
+      jwt.verify(token, process.env.DB_SECRET, (error, decoded) => {
         if (error) {
-          return res.status(401).send({message:'Unauthorized Access'})
+          return res.status(401).send({ message: "Unauthorized Access" });
         }
         req.decoded = decoded;
-        next()
-      })
-    }
+        next();
+      });
+    };
 
-
-    //verify admin middleware 
-    const verifyAdmin = async(req, res, next) =>{
+    //verify admin middleware
+    const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
-      const query = {email: email}
+      const query = { email: email };
       const user = await userCollection.findOne(query);
-      const isAdmin = user?.role === 'admin'
+      const isAdmin = user?.role === "admin";
       if (!isAdmin) {
-        return res.status(403).send({message:'Forbidden Access'})
+        return res.status(403).send({ message: "Forbidden Access" });
       }
-      next()
-    }
-
-
-
-
-
+      next();
+    };
 
     //users collection
-    app.get("/users",verifyToken,verifyAdmin, async (req, res) => {
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
+
     app.post("/users", async (req, res) => {
       const user = req.body;
       const query = { email: user.email };
@@ -87,7 +82,9 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send(result);
     });
-    app.delete("/users/:id",verifyToken, verifyAdmin, async (req, res) => {
+
+    //delete admin
+    app.delete("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await userCollection.deleteOne(query);
@@ -95,36 +92,87 @@ async function run() {
     });
 
     //make user admin(update)
-    app.get('/users/admin/:email', async(req, res) =>{
-      const email = req?.email;
-      if (email !== req?.decoded?.email) {
-        return res.status(403).send({message:'Unauthorized Access'})
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params?.email;
+      // if (email !== req?.decoded?.email) {
+      //   return res.status(403).send({message:'Unauthorized Access'})
+      // }
+      if (req.decoded.email !== email) {
+        res.send({ admin: false });
       }
-      const query = {email: email}
-      const user = await userCollection.findOne(query)
-      let admin = false
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let admin = false;
       if (user) {
-        admin = user?.rule === 'admin'
+        // console.log('heelloo userrrrrrr',user);
+        admin = user?.role === "admin";
       }
-      res.send({admin})
-    })
-    app.patch("/users/admin/:id",verifyToken, verifyAdmin, async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const updateDoc = {
-        $set: {
-          role: "admin",
-        },
-      };
-      const result = await userCollection.updateOne(filter, updateDoc);
-      res.send(result);
+      res.send({ admin });
     });
+
+    app.patch(
+      "/users/admin/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: {
+            role: "admin",
+          },
+        };
+        const result = await userCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      }
+    );
 
     //menu related api
     app.get("/menu", async (req, res) => {
       const result = await menuCollection.find().toArray();
       res.send(result);
     });
+    app.post("/menu",verifyToken, verifyAdmin, async(req, res) =>{
+      const item = req.body;
+      const result = await menuCollection.insertOne(item);
+      res.send(result)
+    })
+    app.delete('/menu/:id',verifyToken, verifyAdmin, async (req, res) =>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)}
+      const result = await menuCollection.deleteOne(query);
+      res.send(result)
+    })
+
+    //menu item update related api
+    //get single data route
+    app.get('/menu/:id', async (req, res) =>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)}
+      const result = await menuCollection.findOne(query);
+      res.send(result)
+    })
+    //update
+    app.patch('/menu/:id', async(req, res) =>{
+      const item = req.body;
+      const id = req.params.id
+      const filter = {_id: new ObjectId(id)}
+      const updateDoc = {
+        $set:{
+          name:item.name,
+          price:item.price,
+          category:item.category,
+          recipe:item.recipe,
+          image:item.image
+        }
+      }
+      const result = await menuCollection.updateOne(filter, updateDoc)
+      res.send(result)
+    })
+
+
+
+
     app.get("/reviews", async (req, res) => {
       const result = await reviewsCollection.find().toArray();
       res.send(result);
